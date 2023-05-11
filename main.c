@@ -29,12 +29,15 @@ static GIOChannel *ttyFd = NULL;
 // cmd table
 static const uint8_t cmdGetSN[] = {3, 00, 00, 00};
 static const uint8_t cmdGetPN[] = {3, 00, 01, 00};
+static const uint8_t cmdGetPalitra[] = {3, 00, 0x2d, 00};
 
 // answer table
 static const uint8_t ansGetSN[] = {0x0c, 00, 00, 0x33, 0x30, 0x31, 0x30, 0x30, 0x30, 0x31, 0x30, 0x30, 00};
 // Name XCORE_LA
-static const uint8_t ansGetPN[] = {0x17, 00, 01, 0x33, 0x58, 0x43, 0x4f, 0x52, 0x45, 0x5f, 0x4c, 0x41, 00,
-									00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00};
+static const uint8_t ansGetPN[] = {0x17, 00, 01, 0x33, 0x4c, 0x41, 0x37, 0x31, 0x31, 0x33, 0x30, 0x30, 0x32, 0x59, 
+								   0x30, 0x33, 0x35, 0x31, 0x30, 0x58, 0x45, 0x4e, 0x50, 0x58};
+
+static const uint8_t ansGetPalitra[] = {0x4, 00, 0x2d, 0x33, 0x03};
 
 
 static void hex_dump(unsigned char *buf, unsigned short len, unsigned char col);
@@ -42,11 +45,13 @@ static uint8_t* build_packet(const uint8_t *data, uint8_t ans);
 
 static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb);
 static void get_sn_func(GIOChannel *ch, struct ReadBuf_s *rb);
+static void get_pn_func(GIOChannel *ch, struct ReadBuf_s *rb);
+static void get_palitra_func(GIOChannel *ch, struct ReadBuf_s *rb);
 
 static struct ParsePack_s{
 	const uint8_t *cmd;
 	void (*cmd_func)(GIOChannel *ch, struct ReadBuf_s *rb);
-}parsePack[] = { {cmdGetSN, get_sn_func}, {NULL, NULL}};
+}parsePack[] = { {cmdGetSN, get_sn_func}, {cmdGetPN, get_pn_func}, {cmdGetPalitra, get_palitra_func}, {NULL, NULL}};
 
 // service functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 static GIOChannel *open_tty(char *drv) {
@@ -57,26 +62,31 @@ static GIOChannel *open_tty(char *drv) {
 		fprintf(stderr, "g_io_channel_new_file error: %s\n", err->message);
 		g_error_free(err);
 	} else {
+		g_io_channel_set_encoding(ret, NULL, NULL);
+		g_io_channel_set_buffered(ret, FALSE);
+		g_io_channel_set_close_on_unref(ret, TRUE);
 		puts("Open OK");
 		int fd = g_io_channel_unix_get_fd(ret);
 		{
 			struct termios tc;
 
 			tcgetattr(fd, &tc);
-			cfmakeraw(&tc);
+//			cfmakeraw(&tc);
+			tc.c_iflag &= ~(BRKINT | ICRNL | IMAXBEL | INLCR | IGNBRK | IGNCR | IXON);
+			tc.c_oflag &= ~(OPOST | ONLCR);
 			tc.c_cflag &= ~(CSIZE | PARENB);
-			tc.c_cflag |= CS8|CRTSCTS;
-			tc.c_cc[VMIN] = 0;
-			tc.c_cc[VTIME] = 1;
+			tc.c_cflag |= CS8;
+			tc.c_lflag &= ~(ECHO | ICANON | ISIG | ECHOE);
+			tc.c_cc[VMIN] = 1;
+			tc.c_cc[VTIME] = 5;
 			cfsetispeed(&tc, B115200);
 			cfsetospeed(&tc, B115200);
 			tcsetattr(fd, TCSANOW, &tc);
 		}
-		g_io_channel_set_encoding(ret, NULL, NULL);
 	}
-	puts("All ok");
 	return ret;
 }
+
 
 static uint8_t calcSC(uint8_t *bf) {
 	uint16_t ui1 = 0;
@@ -147,6 +157,43 @@ static void get_sn_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 	}
 	free(wbuf);	
 }
+
+static void get_pn_func(GIOChannel *ch, struct ReadBuf_s *rb) {
+	fprintf(stdout, "Get packet Get PN:");
+	hex_dump(rb->buf, rb->inx, rb->inx + 1);
+	uint8_t *wbuf = build_packet(ansGetPN, TRUE);
+	gsize wb = 0;
+	GError *err = NULL;
+
+	GIOStatus st = g_io_channel_write_chars(ch, wbuf, (gssize)(wbuf[1] + 4), &wb, &err);
+	fprintf(stdout, "Send answer:");
+	hex_dump(wbuf, wb, wb+1);
+	g_io_channel_flush(ch, &err);
+	if (err) {
+		fprintf(stdout, "Write port error: %s\n", err->message);
+		g_error_free(err);
+	}
+	free(wbuf);	
+}
+
+static void get_palitra_func(GIOChannel *ch, struct ReadBuf_s *rb) {
+	fprintf(stdout, "Get packet Get Palitra:");
+	hex_dump(rb->buf, rb->inx, rb->inx + 1);
+	uint8_t *wbuf = build_packet(ansGetPalitra, TRUE);
+	gsize wb = 0;
+	GError *err = NULL;
+
+	GIOStatus st = g_io_channel_write_chars(ch, wbuf, (gssize)(wbuf[1] + 4), &wb, &err);
+	fprintf(stdout, "Send answer:");
+	hex_dump(wbuf, wb, wb+1);
+	g_io_channel_flush(ch, &err);
+	if (err) {
+		fprintf(stdout, "Write port error: %s\n", err->message);
+		g_error_free(err);
+	}
+	free(wbuf);	
+}
+
 static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 	(void)rb;
 	(void)ch;
@@ -154,6 +201,8 @@ static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 
 static void parse_pack(GIOChannel *ch, struct ReadBuf_s *rb) {
 	struct ParsePack_s *pp = parsePack;
+	printf("Recive msg:");
+	hex_dump(rb->buf, rb->inx, 16);
 	while(pp->cmd) {
 
 		if (rb->inx >= (pp->cmd[0] + 5)) {
