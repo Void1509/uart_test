@@ -29,7 +29,11 @@ static GIOChannel *ttyFd = NULL;
 // cmd table
 static const uint8_t cmdGetSN[] = {3, 00, 00, 00};
 static const uint8_t cmdGetPN[] = {3, 00, 01, 00};
+static const uint8_t cmdGetMatrixW[] = {3, 00, 02, 00};
+static const uint8_t cmdGetMatrixH[] = {3, 00, 03, 00};
+static const uint8_t cmdGetZoom[] = {3, 00, 0x2A, 00};
 static const uint8_t cmdGetPalitra[] = {3, 00, 0x2d, 00};
+
 
 // answer table
 static const uint8_t ansGetSN[] = {0x0c, 00, 00, 0x33, 0x30, 0x31, 0x30, 0x30, 0x30, 0x31, 0x30, 0x30, 00};
@@ -38,6 +42,9 @@ static const uint8_t ansGetPN[] = {0x17, 00, 01, 0x33, 0x4c, 0x41, 0x37, 0x31, 0
 								   0x30, 0x33, 0x35, 0x31, 0x30, 0x58, 0x45, 0x4e, 0x50, 0x58};
 
 static const uint8_t ansGetPalitra[] = {0x4, 00, 0x2d, 0x33, 0x03};
+static const uint8_t ansGetZoom[] = {0x5, 00, 0x2a, 0x33, 0x64, 00};
+static const uint8_t ansGetMatrixW[] = {5, 00, 02, 0x33, 0x80, 0x01};
+static const uint8_t ansGetMatrixH[] = {5, 00, 03, 0x33, 0x20, 0x01};
 
 
 static void hex_dump(unsigned char *buf, unsigned short len, unsigned char col);
@@ -47,11 +54,16 @@ static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb);
 static void get_sn_func(GIOChannel *ch, struct ReadBuf_s *rb);
 static void get_pn_func(GIOChannel *ch, struct ReadBuf_s *rb);
 static void get_palitra_func(GIOChannel *ch, struct ReadBuf_s *rb);
+static void get_zoom_func(GIOChannel *ch, struct ReadBuf_s *rb);
+static void get_matrixH_func(GIOChannel *ch, struct ReadBuf_s *rb);
+static void get_matrixW_func(GIOChannel *ch, struct ReadBuf_s *rb);
 
 static struct ParsePack_s{
 	const uint8_t *cmd;
 	void (*cmd_func)(GIOChannel *ch, struct ReadBuf_s *rb);
-}parsePack[] = { {cmdGetSN, get_sn_func}, {cmdGetPN, get_pn_func}, {cmdGetPalitra, get_palitra_func}, {NULL, NULL}};
+}parsePack[] = { {cmdGetSN, get_sn_func}, {cmdGetPN, get_pn_func}, {cmdGetPalitra, get_palitra_func},
+	{cmdGetMatrixW, get_matrixW_func}, {cmdGetMatrixH, get_matrixH_func}, {cmdGetZoom, get_zoom_func},
+	{NULL, NULL}};
 
 // service functions ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 static GIOChannel *open_tty(char *drv) {
@@ -194,6 +206,63 @@ static void get_palitra_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 	free(wbuf);	
 }
 
+static void get_matrixW_func(GIOChannel *ch, struct ReadBuf_s *rb) {
+
+	fprintf(stdout, "Get packet Get matrix W:");
+	hex_dump(rb->buf, rb->inx, rb->inx + 1);
+	uint8_t *wbuf = build_packet(ansGetMatrixW, TRUE);
+	gsize wb = 0;
+	GError *err = NULL;
+
+	GIOStatus st = g_io_channel_write_chars(ch, wbuf, (gssize)(wbuf[1] + 4), &wb, &err);
+	fprintf(stdout, "Send answer:");
+	hex_dump(wbuf, wb, wb+1);
+	g_io_channel_flush(ch, &err);
+	if (err) {
+		fprintf(stdout, "Write port error: %s\n", err->message);
+		g_error_free(err);
+	}
+	free(wbuf);	
+}
+
+static void get_matrixH_func(GIOChannel *ch, struct ReadBuf_s *rb) {
+
+	fprintf(stdout, "Get packet Get matrix H:");
+	hex_dump(rb->buf, rb->inx, rb->inx + 1);
+	uint8_t *wbuf = build_packet(ansGetMatrixH, TRUE);
+	gsize wb = 0;
+	GError *err = NULL;
+
+	GIOStatus st = g_io_channel_write_chars(ch, wbuf, (gssize)(wbuf[1] + 4), &wb, &err);
+	fprintf(stdout, "Send answer:");
+	hex_dump(wbuf, wb, wb+1);
+	g_io_channel_flush(ch, &err);
+	if (err) {
+		fprintf(stdout, "Write port error: %s\n", err->message);
+		g_error_free(err);
+	}
+	free(wbuf);	
+}
+
+static void get_zoom_func(GIOChannel *ch, struct ReadBuf_s *rb) {
+
+	fprintf(stdout, "Get packet Get zoom:");
+	hex_dump(rb->buf, rb->inx, rb->inx + 1);
+	uint8_t *wbuf = build_packet(ansGetZoom, TRUE);
+	gsize wb = 0;
+	GError *err = NULL;
+
+	GIOStatus st = g_io_channel_write_chars(ch, wbuf, (gssize)(wbuf[1] + 4), &wb, &err);
+	fprintf(stdout, "Send answer:");
+	hex_dump(wbuf, wb, wb+1);
+	g_io_channel_flush(ch, &err);
+	if (err) {
+		fprintf(stdout, "Write port error: %s\n", err->message);
+		g_error_free(err);
+	}
+	free(wbuf);	
+}
+
 static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 	(void)rb;
 	(void)ch;
@@ -201,8 +270,8 @@ static void nop_func(GIOChannel *ch, struct ReadBuf_s *rb) {
 
 static void parse_pack(GIOChannel *ch, struct ReadBuf_s *rb) {
 	struct ParsePack_s *pp = parsePack;
-	printf("Recive msg:");
-	hex_dump(rb->buf, rb->inx, 16);
+//	printf("Recive msg:");
+//	hex_dump(rb->buf, rb->inx, 16);
 	while(pp->cmd) {
 
 		if (rb->inx >= (pp->cmd[0] + 5)) {
@@ -245,22 +314,36 @@ static gboolean read_bytes(GIOChannel *ch, GIOCondition cnd, gpointer p) {
 		return FALSE;
 	}
 
+	static int rbsw = 0;
 	struct ReadBuf_s *rb = p;
 
 	gsize rbytes = 0;
 	GError *err = NULL;
 	GIOStatus st;
 
-	st = g_io_channel_read_chars(ch, &rBuf.buf[rBuf.inx], RBUF_MAX - rBuf.inx, &rbytes, &err);
-	rb->inx += rbytes;
-
-	if (rb->inx >= RBUF_MAX) rb->inx = 0;
-
-	if (st == G_IO_STATUS_NORMAL) {
-		if (parse_buf(ch, rb))
-			parse_pack(ch, rb);
+	if (!rbsw) {
+		rBuf.inx = 0;
+		st = g_io_channel_read_chars(ch, rBuf.buf, 2, &rbytes, &err);
+		if (st == G_IO_STATUS_NORMAL) {
+			if (rbytes == 2) {
+				if (rBuf.buf[0] == 0xaa) {
+					rbsw = rBuf.buf[1] + 2;
+					rBuf.inx = 2;
+				}
+			}
+		}
+	} else {
+		st = g_io_channel_read_chars(ch, &rBuf.buf[rBuf.inx], rbsw, &rbytes, &err);
+		if (st == G_IO_STATUS_NORMAL) {
+			rBuf.inx += rbytes;
+			if (rbytes < rbsw) {
+				rbsw -= rbytes;
+			} else {
+				if (parse_buf(ch, rb))
+					parse_pack(ch, rb);
+			}
+		}
 	}
-
 	return TRUE;
 }
 
